@@ -201,3 +201,68 @@ xlim([0 26])
 xlabel("SNR (dB)")
 ylabel("Average BER")
 legend("\beta=0.01", "\beta=0.1", "\beta=0.2")
+
+%% Design - 2
+
+% Orthogonal Frequency Division Multiplexing (OFDM)
+disp("------------------ OFDM ------------------")
+
+%% (b) Symbol Error Probability
+
+disp("------------------ SEP ------------------")
+M = 10^4; % sequence length
+qam_index = 16; % QAM index
+k = log2(qam_index); % # of bits per symbol
+N = 64; % FFT size or total number of subcarriers
+N_cp = 16;
+L=10; % Number of taps for the frequency selective channel model
+snr_array_dB = 0:2:26; % SNR per bit in dB scale
+sym_err_arr_sim = zeros(1, length(snr_array_dB));
+for i = 1:length(snr_array_dB)
+    snr = snr_array_dB(i);
+    sym_error = 0;
+    for j = 1:M
+        % 1. Generate transmit signal
+        bin_seq = randi([0 1],N*k,1); % generate binary sequence
+        sym_seq = bit2int(bin_seq,k); % convert binary sequence to integers
+        mod_seq = qammod(sym_seq,qam_index); % Gray-encoded
+        mod_seq_ifft = ifft(mod_seq,N);
+        s_t = [mod_seq_ifft(end-N_cp+1:end); mod_seq_ifft];
+        
+        % 2. Propagate through Rayleigh and noisy channel
+        h = 1/sqrt(2)*(randn(L,1)+1i*randn(L,1));
+        H = fft(h,N);
+        h_s = conv(h,s_t);
+        P = 1*sum(abs(h_s).^2)/length(h_s);
+        gamma = 10^(0.1*snr)*k*N/(N+N_cp);
+        N0 = P/gamma;
+        n = sqrt(N0/2)*(randn(size(h_s))+1i*randn(size(h_s)));
+        r_t = h_s + n;
+
+        % 3. Receiver signal
+        y = r_t(N_cp+1:N+N_cp);
+        y_fft = fft(y,N);
+        V = y_fft./H; % Equalization
+        
+        % 4. Generate decision variables
+        sym_seq_hat = qamdemod(V,qam_index);
+    
+        % 5. Symbol Error calculations
+        sym_error = sym_error + sum(sym_seq_hat ~=sym_seq)/N;
+    end
+    sym_err_arr_sim(i) = sym_error/M;
+    disp(sprintf("BER=%f for SNR=%d dB",sym_err_arr_sim(i),snr));
+end
+snr_array = k*10.^(0.1*snr_array_dB); % SNR per symbol in linear scale
+sym_err_arr_an_1 = 2*(1-1/sqrt(qam_index))*(1-sqrt(1.5*snr_array./(qam_index-1+1.5*snr_array)));
+sym_err_arr_an_2 = (1-1/sqrt(qam_index))^2*(1-4/pi*sqrt(1.5*snr_array./(qam_index-1+1.5*snr_array)).*atan(sqrt((qam_index-1+1.5*snr_array)./(1.5*snr_array))));
+sym_err_arr_an = sym_err_arr_an_1 - sym_err_arr_an_2;
+
+figure
+semilogy(snr_array_dB, sym_err_arr_sim)
+hold on
+semilogy(snr_array_dB, sym_err_arr_an)
+xlim([0 26])
+xlabel("SNR (dB)")
+ylabel("Average Symbol Error Rate")
+legend("Simulation","Analytical")
