@@ -266,3 +266,52 @@ xlim([0 26])
 xlabel("SNR (dB)")
 ylabel("Average Symbol Error Rate")
 legend("Simulation","Analytical")
+
+%% (c) Achievable Sum Rate
+
+disp("------------------ Achievable Sum Rate ------------------")
+M = 10^4; % sequence length
+qam_index = 16; % QAM index
+k = log2(qam_index); % # of bits per symbol
+N = 64; % FFT size or total number of subcarriers
+N_cp = 4;
+L = 20; % Number of taps for the frequency selective channel model
+snr_array_dB = -50:5:50; % SNR per bit in dB scale
+sum_rate_arr_sim = zeros(1, length(snr_array_dB));
+for i = 1:length(snr_array_dB)
+    snr = snr_array_dB(i);
+    rate = 0;
+    for j = 1:M
+        % 1. Generate transmit signal
+        bin_seq = randi([0 1],N*k,1); % generate binary sequence
+        sym_seq = bit2int(bin_seq,k); % convert binary sequence to integers
+        mod_seq = qammod(sym_seq,qam_index,UnitAveragePower=1); % Gray-encoded
+        mod_seq_ifft = ifft(mod_seq,N);
+        s_t = [mod_seq_ifft(end-N_cp+1:end); mod_seq_ifft];
+        
+        % 2. Propagate through Rayleigh and noisy channel
+        h = 1/sqrt(2)*(randn(L,1)+1i*randn(L,1));
+        H = fft(h,N);
+        h_s = conv(h,s_t);
+        P = 1*sum(abs(h_s).^2)/length(h_s);
+        gamma = 10^(0.1*snr)*k; % received SNR
+        N0 = P/gamma;
+        n = sqrt(N0/2)*(randn(size(h_s))+1i*randn(size(h_s)));
+
+        % 3. Receive signal
+        r_t = h_s + n;
+        rate = rate + log2(1+sum(abs(H).^2)/(N^2*N0));
+    end
+    sum_rate_arr_sim(i) = rate/M;
+    disp(sprintf("Achievable Sum Rate = %f for SNR=%d dB",sum_rate_arr_sim(i),snr));
+end
+snr_array = k*10.^(0.1*snr_array_dB); % SNR per symbol in linear scale
+sum_rate_arr_an = exp(1./(2*snr_array))/log(2).*expint(1./(2*snr_array));
+
+figure
+plot(snr_array_dB, sum_rate_arr_sim)
+hold on
+plot(snr_array_dB, sum_rate_arr_an)
+xlabel("SNR (dB)")
+ylabel("Achievable Sum Rate")
+legend("Simulation","Analytical")
